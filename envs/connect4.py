@@ -1,10 +1,10 @@
 import numpy as np
 
 
-class TicTacToe:
+class ConnectFour:
     def __init__(self):
-        self.rows = 3
-        self.cols = 3
+        self.rows = 6
+        self.cols = 7
         self.reset()
 
     def reset(self):
@@ -23,21 +23,26 @@ class TicTacToe:
 
     def get_valid_actions(self):
         actions = []
-        for r in range(self.rows):
-            for c in range(self.cols):
-                if self.board[r][c] == 0:
-                    actions.append(r * self.cols + c)
+        for c in range(self.cols):
+            if self.board[0][c] == 0:
+                actions.append(c)
         return actions
+
+    def _get_drop_row(self, col):
+        for r in range(self.rows - 1, -1, -1):
+            if self.board[r][col] == 0:
+                return r
+        return -1
 
     def step(self, action):
         if self.done:
             raise ValueError("Game is already over")
-        row = action // self.cols
-        col = action % self.cols
-        if self.board[row][col] != 0:
-            raise ValueError(f"Position ({row}, {col}) is already taken")
+        col = action
+        row = self._get_drop_row(col)
+        if row == -1:
+            raise ValueError(f"Column {col} is full")
         self.board[row][col] = self.current_player
-        if self._check_win(self.current_player):
+        if self._check_win(row, col, self.current_player):
             self.done = True
             self.winner = self.current_player
             reward = 1.0
@@ -51,16 +56,20 @@ class TicTacToe:
         self.current_player = 3 - self.current_player
         return self.get_state(), reward, self.done, info
 
-    def _check_win(self, player):
-        b = self.board
-        for r in range(3):
-            if b[r][0] == b[r][1] == b[r][2] == player:
+    def _check_win(self, row, col, player):
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+        for dr, dc in directions:
+            count = 1
+            r, c = row + dr, col + dc
+            while 0 <= r < self.rows and 0 <= c < self.cols and self.board[r][c] == player:
+                count += 1
+                r += dr
+                c += dc
+            r, c = row - dr, col - dc
+            while 0 <= r < self.rows and 0 <= c < self.cols and self.board[r][c] == player:
+                count += 1
+                r -= dr
+                c -= dc
+            if count >= 4:
                 return True
-        for c in range(3):
-            if b[0][c] == b[1][c] == b[2][c] == player:
-                return True
-        if b[0][0] == b[1][1] == b[2][2] == player:
-            return True
-        if b[0][2] == b[1][1] == b[2][0] == player:
-            return True
         return False
