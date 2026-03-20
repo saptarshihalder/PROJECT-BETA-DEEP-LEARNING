@@ -1,19 +1,3 @@
-"""
-BASIL Autoencoder — Training + Verification
-
-Generates mixed game states from TicTacToe + Connect4, trains the shared
-CNN autoencoder (paper Section 3), then runs 7 verification checks.
-
-Usage:
-    cd basil
-    pip install torch numpy
-    python train_autoencoder.py
-
-Hyperparameters can be changed via the constants below. For quick testing
-use NUM_STATES_PER_GAME=3000, EPOCHS=30. For full training as in the paper
-use NUM_STATES_PER_GAME=50000, EPOCHS=100.
-"""
-
 import os
 import sys
 import random
@@ -27,10 +11,6 @@ from models.encoder_decoder import BoardAutoEncoder
 from envs.tictactoe import TicTacToe
 from envs.connect4 import ConnectFour
 from envs.generate_data import pad_state, PAD_H, PAD_W
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Hyperparameters
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 LATENT_DIM           = 64       # paper: 64-dim latent
 BATCH_SIZE           = 256
 EPOCHS               = 30
@@ -39,10 +19,6 @@ NUM_STATES_PER_GAME  = 5000     # states per game for dataset
 TARGET_MSE           = 0.1      # paper Section 5: target MSE < 0.1
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Data
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def collect_states(env_class, n):
     """Play random games and collect n board states."""
     env = env_class()
@@ -59,7 +35,6 @@ def collect_states(env_class, n):
 
 
 def make_dataloaders():
-    """Generate mixed padded data and return train/val DataLoaders."""
     print("Generating game states...")
     ttt = collect_states(TicTacToe, NUM_STATES_PER_GAME)
     c4  = collect_states(ConnectFour, NUM_STATES_PER_GAME)
@@ -82,11 +57,6 @@ def make_dataloaders():
     val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False)
     print(f"  Train: {n_train}, Val: {len(tensor) - n_train}\n")
     return train_loader, val_loader
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Training
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def train(model, train_loader, val_loader):
     """
     Train autoencoder with MSE loss.
@@ -130,13 +100,7 @@ def train(model, train_loader, val_loader):
             print(f"  {epoch+1:3d}/{EPOCHS}  |  {train_loss:.6f}    |  {val_loss:.6f}")
 
     return val_loss
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Verification
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def verify(model):
-    """Run 7 verification checks on the trained autoencoder."""
     model.eval()
     results = []
 
@@ -249,11 +213,6 @@ def verify(model):
         print(f"  {n_pass}/{n_total} CHECKS PASSED — review failures above")
     print("=" * 64)
     return all(results)
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Main
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def main():
     print("=" * 64)
     print("  BASIL Autoencoder Training")
