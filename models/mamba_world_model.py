@@ -1,5 +1,3 @@
-
-
 import math
 import torch
 import torch.nn as nn
@@ -11,31 +9,18 @@ class SelectiveSSM(nn.Module):
         self.d_model = d_model
         self.d_state = d_state
         self.d_inner = d_model * expand  # expanded inner dimension
-
-        # ── Input projection (split into two paths like Mamba) ────
-        #    Path 1: main path through SSM
-        #    Path 2: gating path (skip connection with SiLU gate)
         self.in_proj = nn.Linear(d_model, self.d_inner * 2, bias=False)
 
-        # ── Selective parameters: B_t, C_t, Δ_t from input ───────
         self.x_proj = nn.Linear(self.d_inner, d_state * 2 + 1, bias=False)
         # Outputs: B_t (d_state), C_t (d_state), delta_t (1)
-
-        # ── Learnable log(A) — initialized as negative (stable) ──
-        # A is diagonal: (d_inner, d_state)
         log_A = torch.log(
             torch.arange(1, d_state + 1, dtype=torch.float32)
         ).unsqueeze(0).expand(self.d_inner, -1)
-        self.log_A = nn.Parameter(-log_A)  # negative for stability
-
-        # ── Delta (Δ) bias — controls default discretization step ─
-        # Initialize so softplus(bias) ≈ small positive value
+        self.log_A = nn.Parameter(-log_A)  
         self.dt_bias = nn.Parameter(torch.randn(self.d_inner) * 0.01 - 2.0)
 
-        # ── D parameter (skip connection in SSM output) ──────────
         self.D = nn.Parameter(torch.ones(self.d_inner))
 
-        # ── Output projection back to d_model ────────────────────
         self.out_proj = nn.Linear(self.d_inner, d_model, bias=False)
 
         # ── Layer norm (pre-norm like Mamba 2) ───────────────────
@@ -47,8 +32,6 @@ class SelectiveSSM(nn.Module):
 
         # Pre-norm
         x = self.norm(x)
-
-        # Input projection -> main path + gate
         xz = self.in_proj(x)                              # (B, d_inner*2)
         x_main, z = xz.chunk(2, dim=-1)                   # each (B, d_inner)
 
@@ -92,7 +75,6 @@ class SelectiveSSM(nn.Module):
         return y, h_new
 
     def init_hidden(self, batch_size: int, device: torch.device = None):
-        """Create zero-initialized hidden state."""
         if device is None:
             device = self.log_A.device
         return torch.zeros(
@@ -173,15 +155,10 @@ class MambaWorldModel(nn.Module):
     ):
         # Use provided or internal hidden states
         h_states = hidden_states if hidden_states is not None else self._hidden_states
-
-        # ── 1. Action embedding ──────────────────────────────────
         a_emb = self.action_embed(action)                   # (B, 16)
 
-        # ── 2. Fusion: concat + project ──────────────────────────
         fused = torch.cat([z_t, a_emb], dim=-1)             # (B, 80)
         h = self.fusion(fused)                               # (B, 128)
-
-        # ── 3. Pass through Mamba blocks ─────────────────────────
         new_h_states = []
         for i, block in enumerate(self.blocks):
             h_prev = h_states[i] if h_states is not None else None
@@ -190,8 +167,6 @@ class MambaWorldModel(nn.Module):
 
         # Update internal hidden states
         self._hidden_states = new_h_states
-
-        # ── 4. Prediction heads ──────────────────────────────────
         z_next = self.next_state_head(h)                     # (B, 64)
         reward = self.reward_head(h)                          # (B, 1)
         done_logit = self.done_head(h)                        # (B, 1)
