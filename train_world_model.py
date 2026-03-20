@@ -1,22 +1,3 @@
-"""
-BASIL Mamba World Model — Training + Verification  (Saptarshi — Step 3b)
-
-End-to-end pipeline:
-    1. Load pre-trained encoder (from autoencoder checkpoint)
-    2. Collect transition data: (z_t, a_t, z_{t+1}, r_t, d_t)
-    3. Train Mamba World Model on transitions
-    4. Verify: 1-step accuracy, 5-step rollout, hidden state behaviour
-
-Paper references:
-    - Section 3: Architecture spec
-    - Section 5: "1-step and 5-step prediction accuracy"
-    - Eq. 2:     L_world = ||z_{t+1} - ẑ||² + 0.5|r - r̂|² + BCE(d, d̂)
-
-Usage:
-    cd basil
-    python train_world_model.py
-"""
-
 import os
 import sys
 import random
@@ -33,10 +14,6 @@ from envs.tictactoe import TicTacToe
 from envs.connect4 import ConnectFour
 from envs.game_registry import pad_state, PAD_H, PAD_W, MAX_ACTIONS
 from data.collect_transitions import collect_mixed_transitions
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Hyperparameters
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 LATENT_DIM       = 64       # encoder output dim
 ACTION_DIM       = 16       # action embedding dim (paper Section 3)
 HIDDEN_DIM       = 128      # Mamba block hidden dim (paper Section 3)
@@ -49,11 +26,6 @@ LR               = 3e-4     # same as PPO lr in paper
 NUM_TRANSITIONS  = 5000     # per game (for quick training)
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 1. Load Pre-trained Encoder
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def load_encoder(ckpt_path: str = "checkpoints/autoencoder.pt"):
     """Load the pre-trained encoder and freeze its weights."""
     encoder = Encoder(in_channels=3, latent_dim=LATENT_DIM,
@@ -74,10 +46,6 @@ def load_encoder(ckpt_path: str = "checkpoints/autoencoder.pt"):
 
     return encoder
 
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 2. Prepare DataLoaders
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def make_dataloaders(data: dict, val_split: float = 0.1):
     """Split transition data into train/val DataLoaders."""
     n = len(data["z_t"])
@@ -98,11 +66,6 @@ def make_dataloaders(data: dict, val_split: float = 0.1):
     val_loader = make_loader(n_train, n, shuffle=False)
     print(f"  Train: {n_train}, Val: {n_val}")
     return train_loader, val_loader
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 3. Training Loop
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def train(model, train_loader, val_loader):
     """Train Mamba World Model with L_world loss (paper Eq. 2)."""
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
@@ -175,11 +138,6 @@ def train(model, train_loader, val_loader):
                   f"{val_parts[0]:.5f} | {val_parts[1]:.5f} | {val_parts[2]:.5f}")
 
     return best_val
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 4. Verification
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def verify(model, encoder):
     """Comprehensive verification of the Mamba World Model."""
     model.eval()
@@ -357,11 +315,6 @@ def verify(model, encoder):
         print(f"  {n_pass}/{n_total} CHECKS PASSED")
     print("=" * 64)
     return all(results)
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Main
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def main():
     print("=" * 64)
     print("  BASIL Mamba World Model Training")
