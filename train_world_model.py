@@ -21,9 +21,9 @@ STATE_DIM        = 16       # SSM state dim N
 NUM_BLOCKS       = 2        # Mamba blocks (paper: 2-4)
 
 BATCH_SIZE       = 128
-EPOCHS           = 40
+EPOCHS           = 100
 LR               = 3e-4     # same as PPO lr in paper
-NUM_TRANSITIONS  = 5000     # per game (for quick training)
+NUM_TRANSITIONS  = 50000     # per game (for quick training)
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def load_encoder(ckpt_path: str = "checkpoints/autoencoder.pt"):
