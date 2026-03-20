@@ -1,62 +1,10 @@
-"""
-BASIL Mamba World Model  (Saptarshi — Step 2)
 
-Paper Section 3 — "Mamba World Model":
-    Models  P(z_{t+1}, r_t, d_t | z_t, a_t)  using Mamba 2.
-
-    Input:  concat( z_t ∈ R^64 ,  e(a_t) ∈ R^16 )  =  R^80
-    Architecture:
-        1.  Fusion layer  (Linear 80 -> 128)
-        2.  2-4 Mamba 2 blocks  (hidden dim 128, state dim 16)
-        3.  Three prediction heads:
-              - next_state_head  ->  ẑ_{t+1}  ∈ R^64
-              - reward_head      ->  r̂_t      ∈ R^1
-              - done_head        ->  d̂_t      ∈ R^1  (logit, BCE loss)
-
-    Training loss (paper Eq. 2):
-        L_world = ||z_{t+1} - ẑ_{t+1}||^2
-                + 0.5 * |r_t - r̂_t|^2
-                + BCE(d_t, d̂_t)
-
-Mamba Background (paper Section 2 — SSMs):
-    Continuous:  h'(t) = A·h(t) + B·x(t),   y(t) = C·h(t)
-    Selective:   B_t, C_t, Δ_t = Linear(x_t)     (input-dependent)
-    Discretized: Ā = exp(Δ_t · A)
-                 B̄ = Δ_t · B_t                    (zero-order hold)
-                 h_t = Ā · h_{t-1} + B̄ · x_t      (state update)
-                 y_t = C_t · h_t                    (readout)
-
-    During planning rollouts the SSM hidden state h persists across
-    steps, giving the model trajectory memory — a key advantage over
-    a plain MLP world model.
-"""
 
 import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Selective SSM Block  (Mamba-style)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class SelectiveSSM(nn.Module):
-    """
-    Single Mamba-style Selective State Space Model block.
-
-    Unlike classical SSMs where A, B, C are fixed, Mamba makes B, C, Δ
-    input-dependent ("selective") so the model can choose what to
-    remember or forget based on the current input.
-
-    For the BASIL world model each forward call is one "timestep" in the
-    rollout.  The hidden state h carries context from previous rollout
-    steps (important for multi-step planning in the Slow Path).
-
-    Args:
-        d_model:   input / output dimension  (default 128)
-        d_state:   SSM state dimension N      (default 16)
-        expand:    expansion factor for inner dim  (default 2)
-    """
 
     def __init__(self, d_model: int = 128, d_state: int = 16, expand: int = 2):
         super().__init__()
@@ -94,17 +42,6 @@ class SelectiveSSM(nn.Module):
         self.norm = nn.LayerNorm(d_model)
 
     def forward(self, x: torch.Tensor, h: torch.Tensor = None):
-        """
-        Single-step selective SSM.
-
-        Args:
-            x: (batch, d_model)      current input
-            h: (batch, d_inner, d_state) or None   SSM hidden state
-
-        Returns:
-            y:     (batch, d_model)              output
-            h_new: (batch, d_inner, d_state)     updated hidden state
-        """
         B = x.size(0)
         residual = x
 
@@ -162,40 +99,7 @@ class SelectiveSSM(nn.Module):
             batch_size, self.d_inner, self.d_state,
             device=device, dtype=torch.float32,
         )
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Mamba World Model
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class MambaWorldModel(nn.Module):
-    """
-    BASIL Mamba World Model — "The Imagination" (paper Figure 1).
-
-    Predicts the next latent state, reward, and done signal from the
-    current latent state and action:
-
-        (z_t, a_t)  --->  (ẑ_{t+1}, r̂_t, d̂_t)
-
-    Architecture (paper Section 3):
-        1. Action embedding:   a_t -> e(a_t) ∈ R^16
-        2. Fusion layer:       concat(z_t, e(a_t)) -> Linear(80, 128) + ReLU
-        3. Mamba 2 blocks:     2-4 SelectiveSSM blocks (d_model=128)
-        4. Prediction heads:
-             - next_state:  Linear(128, 64)           -> ẑ_{t+1}
-             - reward:      Linear(128, 1)            -> r̂_t
-             - done:        Linear(128, 1)            -> d̂_t (logit)
-
-    The hidden states of all SSM blocks persist across rollout steps,
-    giving the model trajectory memory during planning.
-
-    Args:
-        latent_dim:    encoder output dim z  (default 64)
-        action_dim:    action embedding dim  (default 16)
-        max_actions:   size of action vocab  (default 9)
-        hidden_dim:    SSM / fusion dim      (default 128)
-        state_dim:     SSM state dim N       (default 16)
-        num_blocks:    number of Mamba blocks (default 2, paper: 2-4)
-    """
 
     def __init__(
         self,
@@ -267,22 +171,6 @@ class MambaWorldModel(nn.Module):
         action: torch.Tensor,
         hidden_states: list = None,
     ):
-        """
-        Single-step world model prediction.
-
-        Args:
-            z_t:    (batch, 64)    current latent state from encoder
-            action: (batch,)       integer action indices
-            hidden_states:  list of SSM hidden states (optional, for
-                           external state management). If None, uses
-                           internal self._hidden_states.
-
-        Returns:
-            z_next: (batch, 64)    predicted next latent state
-            reward: (batch, 1)     predicted reward
-            done:   (batch, 1)     done logit (apply sigmoid for prob)
-            hidden_states_new:  updated list of SSM hidden states
-        """
         # Use provided or internal hidden states
         h_states = hidden_states if hidden_states is not None else self._hidden_states
 
@@ -311,14 +199,6 @@ class MambaWorldModel(nn.Module):
         return z_next, reward, done_logit, new_h_states
 
     def predict(self, z_t: torch.Tensor, action: torch.Tensor):
-        """
-        Convenience wrapper that returns done as probability.
-
-        Returns:
-            z_next:    (batch, 64)
-            reward:    (batch,)     scalar reward
-            done_prob: (batch,)     probability game is over
-        """
         z_next, reward, done_logit, _ = self.forward(z_t, action)
         return z_next, reward.squeeze(-1), torch.sigmoid(done_logit).squeeze(-1)
 
@@ -327,21 +207,6 @@ class MambaWorldModel(nn.Module):
         z_start: torch.Tensor,
         actions: torch.Tensor,
     ):
-        """
-        Run a full imagined rollout of H steps.
-
-        Used by the Planning Module (Slow Path) during random shooting:
-            k=10 rollouts per action, horizon H=5  (paper Section 3).
-
-        Args:
-            z_start: (batch, 64)      starting latent state
-            actions: (batch, H)       action sequence for each rollout
-
-        Returns:
-            z_states: (batch, H, 64)  predicted latent states
-            rewards:  (batch, H)      predicted rewards
-            dones:    (batch, H)      done probabilities
-        """
         B, H = actions.shape
         device = z_start.device
 
@@ -364,11 +229,6 @@ class MambaWorldModel(nn.Module):
             torch.stack(rewards, dim=1),      # (B, H)
             torch.stack(dones, dim=1),        # (B, H)
         )
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# World Model Loss  (paper Eq. 2)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class WorldModelLoss(nn.Module):
     """
     Combined loss from paper Eq. 2:
@@ -396,18 +256,6 @@ class WorldModelLoss(nn.Module):
         done_logit: torch.Tensor,
         done_true: torch.Tensor,
     ):
-        """
-        Args:
-            z_next_pred: (B, 64)  predicted next latent
-            z_next_true: (B, 64)  actual next latent from encoder
-            reward_pred: (B, 1)   predicted reward
-            reward_true: (B, 1)   actual reward
-            done_logit:  (B, 1)   done prediction (raw logit)
-            done_true:   (B, 1)   actual done flag (0 or 1)
-
-        Returns:
-            total_loss, (state_loss, reward_loss, done_loss)
-        """
         l_state = self.state_loss_fn(z_next_pred, z_next_true)
         l_reward = self.reward_loss_fn(reward_pred, reward_true)
         l_done = self.done_loss_fn(done_logit, done_true)
