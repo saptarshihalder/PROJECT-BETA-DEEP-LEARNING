@@ -1,14 +1,3 @@
-"""
-BASIL Transition Data Collector  (Saptarshi — Step 3a)
-
-Plays random games in TicTacToe and Connect4, encodes each board state
-through the pre-trained CNN encoder, and stores transitions as:
-
-    (z_t, a_t, z_{t+1}, r_t, d_t)
-
-This is the dataset used to train the Mamba World Model.
-"""
-
 import os
 import random
 import numpy as np
@@ -25,23 +14,6 @@ def collect_transitions(
     num_transitions: int = 10000,
     device: str = "cpu",
 ):
-    """
-    Play random games and collect encoded transitions.
-
-    Args:
-        env_class:         TicTacToe or ConnectFour class
-        encoder:           pre-trained CNN encoder (frozen)
-        num_transitions:   how many (s, a, s', r, d) tuples to collect
-        device:            'cpu' or 'cuda'
-
-    Returns:
-        dict with keys:
-            z_t:      (N, 64)   current latent states
-            actions:  (N,)      action taken (int)
-            z_next:   (N, 64)   next latent states
-            rewards:  (N,)      rewards received
-            dones:    (N,)      done flags (0.0 or 1.0)
-    """
     encoder.eval()
     env = env_class()
 
@@ -106,17 +78,6 @@ def collect_mixed_transitions(
     num_per_game: int = 5000,
     device: str = "cpu",
 ):
-    """
-    Collect transitions from both games and merge.
-
-    Args:
-        encoder:       pre-trained CNN encoder
-        num_per_game:  transitions per game
-        device:        'cpu' or 'cuda'
-
-    Returns:
-        dict with merged, shuffled transition tensors
-    """
     print("Collecting transitions...")
 
     print(f"  TicTacToe ({num_per_game} transitions)...")
